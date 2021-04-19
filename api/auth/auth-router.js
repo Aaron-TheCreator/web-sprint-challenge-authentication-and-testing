@@ -4,8 +4,9 @@ const secret = require('../../config/secrets.js');
 
 const router = require('express').Router();
 
-const Jokes = require("../jokes/jokes-data.js");
-router.post('/register', (req, res) => {
+const Users = require('../users/user-model.js');
+
+router.post('/register', async (req, res, next) => {
   
   /*
     IMPLEMENT
@@ -32,13 +33,31 @@ router.post('/register', (req, res) => {
     4- On FAILED registration due to the `username` being taken,
       the response body should include a string exactly as follows: "username taken".
   */
+      const credentials = req.body;
 
+      try {
+        const hash = bcryptjs.hashSync(credentials.password, 8);
+        credentials.password = hash;
 
+        const user = await Users.add(credentials);
+        const token = generateToken(user);
+        res.status(201).json({
+          data: user,
+          token
+        });
+      } catch (err) {
+        console.log(err);
+        next({
+          code: 500,
+          message: 'error creating new user'
+        })
+      }
+    
 
 });
 
-router.post('/login', (req, res) => {
-  res.end('implement login, please!');
+router.post('/login', async (req, res, next) => {
+  
   /*
     IMPLEMENT
     You are welcome to build additional middlewares to help with the endpoint's functionality.
@@ -62,6 +81,47 @@ router.post('/login', (req, res) => {
     4- On FAILED login due to `username` not existing in the db, or `password` being incorrect,
       the response body should include a string exactly as follows: "invalid credentials".
   */
+
+      const { username, password } = req.body;
+
+      try {
+        const [user] = await Users.findBy({ username: username });
+        if (user && bcryptjs.compareSync(password, user.password)) {
+          const token = generateToken(user);
+          res.status(200).json({
+            message: 'welcome to the api',
+            token
+          });
+        } else {
+          next({
+            code: 401,
+            message: 'invalid credentials'
+          });
+        }
+      } catch (err) {
+        next({
+          code: 500,
+          message: 'database error'
+        })
+      }
 });
+
+function generateToken(user) {
+
+  const payload = {
+    subject: user.id,
+    username: user.username,
+    // any other information to be passed wih the token can be
+    // added here with key: value declaration
+  };
+
+  const options = {
+    expiresIn: "1d"
+  };
+
+  const token = jwt.sign(payload, secret.jwtSecret, options);
+
+  return token;
+}
 
 module.exports = router;
